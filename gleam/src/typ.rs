@@ -1246,23 +1246,21 @@ impl<'a> Env<'a> {
                 })
             }
 
-            TypeAst::Var { name, .. } => match vars.get(name) {
+            TypeAst::Var { name, meta, .. } => match vars.get(name) {
                 Some((_, var)) => Ok(var.clone()),
 
-                None => {
-                    match new {
-                        NewTypeAction::MakeGeneric => {
-                            let var = self.new_generic_var();
-                            vars.insert(name.to_string(), (self.previous_uid(), var.clone()));
-                            Ok(var)
-                        }
-                        NewTypeAction::Disallow => {
-                            // TODO: test that enum constructors using unknown vars in their
-                            // definitions is not permitted.
-                            unimplemented!()
-                        }
+                None => match new {
+                    NewTypeAction::MakeGeneric => {
+                        let var = self.new_generic_var();
+                        vars.insert(name.to_string(), (self.previous_uid(), var.clone()));
+                        Ok(var)
                     }
-                }
+                    NewTypeAction::Disallow => Err(Error::UnknownType {
+                        name: name.to_string(),
+                        meta: meta.clone(),
+                        types: self.type_constructors.clone(),
+                    }),
+                },
             },
         }
     }
@@ -3865,6 +3863,18 @@ pub fn x() { id(1, 1.0) }
                     fn x() { X(b: 1, a: 1, 1) }"#,
             error: Error::PositionalArgumentAfterLabelled {
                 meta: Meta { start: 77, end: 78 },
+            },
+        },
+        Case {
+            src: r#"struct Thing { unknown: x }"#,
+            error: Error::UnknownType {
+                meta: Meta { start: 77, end: 78 },
+                name: "x".to_string(),
+                types: {
+                    let types = Env::new(&mut HashMap::new()).type_constructors;
+                    // Insert the Thing type
+                    types
+                },
             },
         },
     ];
